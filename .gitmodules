@@ -1,0 +1,5 @@
+[submodule "mono"]
+	path = mono
+	url = https://github.com/synapdeck/rocicorp-mono.git
+	branch = typedrat/ssr
+	shallow = true
