@@ -1,0 +1,35 @@
+{
+  "name": "zero-ssr-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "zero": "pnpm -C mono install --frozen-lockfile && pnpm zero:build",
+    "build": "pnpm build:client && pnpm build:server",
+    "build:client": "esbuild src/app/browser.tsx --bundle --minify --format=iife --target=es2022 --outfile=dist/browser.js",
+    "build:server": "esbuild src/server/ssr-server.tsx src/server/api-server.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/server",
+    "bench": "pnpm build && node bench/run.ts",
+    "check-types": "tsc",
+    "format": "oxfmt src bench README.md PROPOSAL.md package.json tsconfig.json",
+    "zero:build": "cd mono/packages/zero && node --experimental-strip-types --no-warnings tool/build.ts && cd ../../.. && pnpm install"
+  },
+  "dependencies": {
+    "@rocicorp/zero": "file:mono/packages/zero",
+    "postgres": "3.4.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.28.0",
+    "@types/node": "^22.19.19",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "0.28.2",
+    "oxfmt": "^0.74.0",
+    "playwright": "^1.60.0",
+    "typescript": "~7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.11.0"
+}

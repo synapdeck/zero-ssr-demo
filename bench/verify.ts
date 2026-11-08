@@ -1,8 +1,6 @@
-/* oxlint-disable no-console, @typescript-eslint/no-explicit-any -- Demo code. */
+import {Zero} from '@rocicorp/zero';
 import postgres from 'postgres';
-import {hashOfNameAndArgs} from 'zero-mono/packages/zero-protocol/src/query-hash.ts';
-import {Zero} from 'zero-mono/packages/zero/src/zero.ts';
-import {mutators, queries, schema} from './schema.ts';
+import {mutators, queries, schema, type Context} from '../src/app/schema.ts';
 
 /**
  * Checks copies against real CVR data while writes run. A clone has to show what
@@ -13,7 +11,8 @@ import {mutators, queries, schema} from './schema.ts';
 const CACHE_URL = `http://127.0.0.1:${process.env['CACHE_PORT']}`;
 const sql = postgres(process.env['PG_URL'] as string, {onnotice: () => {}});
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-const NAMES = ['search', 'list', 'thread', 'threadChanging', 'total'];
+const NAMES = ['search', 'list', 'thread', 'threadChanging', 'total'] as const;
+type Name = (typeof NAMES)[number];
 // The proof rows under an EXISTS may legitimately differ from a fresh group's.
 const ROUNDS = Number(process.env['VERIFY_ROUNDS'] ?? 3);
 
@@ -25,16 +24,38 @@ const newZero = (tag: string) =>
     mutators,
     userID: 'alice',
     auth: 'user:alice',
-    context: {userID: 'alice'},
+    context: {userID: 'alice'} as Context,
     storageKey: `${tag}${storageKey++}${Date.now()}`,
     kvStore: 'mem',
     logLevel: 'error',
-  } as any) as any;
+  });
+type Client = ReturnType<typeof newZero>;
 
-function live(zero: any, name: string): Promise<any> {
-  const view = zero.materialize((queries as any)[name]());
+type View = {
+  readonly data: unknown;
+  addListener(cb: (data: unknown, type: string) => void): () => void;
+  destroy(): void;
+};
+
+function materialize(zero: Client, name: Name): View {
+  switch (name) {
+    case 'search':
+      return zero.materialize(queries.search());
+    case 'list':
+      return zero.materialize(queries.list());
+    case 'thread':
+      return zero.materialize(queries.thread());
+    case 'threadChanging':
+      return zero.materialize(queries.threadChanging());
+    case 'total':
+      return zero.materialize(queries.total());
+  }
+}
+
+function live(zero: Client, name: Name): Promise<View> {
+  const view = materialize(zero, name);
   return new Promise(resolve => {
-    const off = view.addListener((_: unknown, type: string) => {
+    const off = view.addListener((_, type) => {
       if (type === 'complete') {
         off();
         resolve(view);
@@ -72,11 +93,13 @@ async function changeScalar() {
   await sleep(250);
 }
 
-async function refCounts(group: string, hash: string) {
+async function refCounts(group: string, name: string) {
   const rows = await sql`
-    select "table", "rowKey", ("refCounts"->>${hash})::int as count
-    from "zero_0/cvr".rows
-    where "clientGroupID" = ${group} and "refCounts" ? ${hash}`;
+    select r."table", r."rowKey", (r."refCounts"->>q."queryHash")::int as count
+    from "zero_0/cvr".rows r
+    join "zero_0/cvr".queries q
+      on q."clientGroupID" = r."clientGroupID" and r."refCounts" ? q."queryHash"
+    where r."clientGroupID" = ${group} and q."queryName" = ${name}`;
   return new Map(
     rows.map(r => [`${r.table}${JSON.stringify(r.rowKey)}`, r.count as number]),
   );
@@ -87,11 +110,11 @@ const stats = {rounds: 0, viewDiffs: 0, freshDiffs: 0, refDiffs: 0, refRows: 0};
 const failures: string[] = [];
 
 async function check(
-  name: string,
-  donor: any,
-  donorView: any,
-  clone: any,
-  view: any,
+  name: Name,
+  donor: Client,
+  donorView: View,
+  clone: Client,
+  view: View,
 ) {
   stats.rounds++;
   // A scalar change rehydrates every query in a group, which takes a while.
@@ -110,9 +133,8 @@ async function check(
   }
   freshView.destroy();
   await fresh.close();
-  const hash = hashOfNameAndArgs(name, []);
-  const a = await refCounts(await donor.clientGroupID, hash);
-  const b = await refCounts(await clone.clientGroupID, hash);
+  const a = await refCounts(await donor.clientGroupID, name);
+  const b = await refCounts(await clone.clientGroupID, name);
   stats.refRows += b.size;
   for (const key of new Set([...a.keys(), ...b.keys()])) {
     if (a.get(key) !== b.get(key)) {
@@ -127,7 +149,7 @@ async function check(
 }
 
 const donor = newZero('donor');
-const views: Record<string, any> = {};
+const views = {} as Record<Name, View>;
 for (const name of NAMES) {
   views[name] = await live(donor, name);
 }
@@ -162,7 +184,7 @@ const writer = (async () => {
     await sleep(15);
   }
 })();
-const running: [string, any, any][] = [];
+const running: [Name, Client, View][] = [];
 for (const name of NAMES) {
   const clone = newZero('busy');
   running.push([name, clone, await live(clone, name)]);

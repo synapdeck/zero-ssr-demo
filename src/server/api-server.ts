@@ -1,8 +1,7 @@
-/* oxlint-disable @typescript-eslint/no-explicit-any -- Demo code. */
 import http from 'node:http';
-import {handleQueryRequest} from 'zero-mono/packages/zero-server/src/queries/process-queries.ts';
-import {mustGetQuery} from 'zero-mono/packages/zero/src/zero.ts';
-import {queries, schema} from './schema.ts';
+import {mustGetQuery} from '@rocicorp/zero';
+import {handleQueryRequest} from '@rocicorp/zero/server';
+import {queries, schema} from '../app/schema.ts';
 
 const BEARER_USER = /^Bearer user:(\w+)$/;
 
@@ -17,14 +16,13 @@ http
     const match = BEARER_USER.exec(req.headers.authorization ?? '');
     const ctx = match ? {userID: match[1]} : undefined;
     const body = await handleQueryRequest({
-      handler: (name: string, args: unknown) =>
-        (mustGetQuery(queries, name) as any).fn({args, ctx}),
+      handler: (name, args) => mustGetQuery(queries, name).fn({args, ctx}),
       schema,
       query: Object.fromEntries(url.searchParams),
       body: JSON.parse(raw || 'null'),
       userID: ctx?.userID,
       logLevel: 'error',
-    } as any);
+    });
     res.writeHead(200, {'content-type': 'application/json'});
     res.end(JSON.stringify(body));
   })

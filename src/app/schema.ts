@@ -8,7 +8,7 @@ import {
   relationships,
   string,
   table,
-} from 'zero-mono/packages/zero/src/zero.ts';
+} from '@rocicorp/zero';
 
 const issue = table('issue')
   .columns({id: string(), title: string(), owner: string(), rank: number()})
@@ -68,6 +68,13 @@ export const queries = defineQueries({
   // An aggregate, which can't be copied yet and always hydrates.
   total: defineQuery(({ctx}: {ctx: Context}) => matching(ctx).count()),
 });
+
+declare module '@rocicorp/zero' {
+  interface DefaultTypes {
+    schema: typeof schema;
+    context: Context;
+  }
+}
 
 export type PageName = 'search' | 'list' | 'thread' | 'total';
 export const PAGES: readonly PageName[] = ['search', 'list', 'thread', 'total'];

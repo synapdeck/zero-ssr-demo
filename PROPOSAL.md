@@ -4,7 +4,7 @@ none of this has run against them, and I don't expect it to merge as is.
 
 PR: [link once opened]
 Demo: [synapdeck/zero-ssr-demo](https://github.com/synapdeck/zero-ssr-demo).
-`node run.mjs --verify` runs Postgres, zero-cache and Chromium.
+`pnpm bench --verify` runs Postgres, zero-cache and Chromium.
 
 It follows your July comment: the server connection is its own client group,
 queries are reused across client groups, and request metadata routes a user's

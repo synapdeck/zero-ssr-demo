@@ -1,0 +1,6 @@
+allowBuilds:
+  '@rocicorp/zero-sqlite3': true
+  cpu-features: false
+  esbuild: true
+  protobufjs: true
+  ssh2: false

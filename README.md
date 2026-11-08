@@ -9,15 +9,21 @@ Docker, Node 24 and pnpm.
 ```sh
 git clone --recurse-submodules https://github.com/synapdeck/zero-ssr-demo
 cd zero-ssr-demo
-(cd mono && pnpm install && pnpm exec playwright install chromium)
+pnpm zero                              # Builds Zero from the submodule
+pnpm exec playwright install chromium
 
-node run.mjs            # About 5 minutes
-node run.mjs --verify   # About 10 minutes, and also checks CVR data
+pnpm bench             # About 5 minutes
+pnpm bench --verify    # About 10 minutes, and also checks CVR data
 ```
 
-Set `ZERO_MONO` to use a different checkout of Zero. The demo uses ports 17544 to 17849. It prints the results and writes them to `.build/results.md`, and
-zero-cache's log goes to `.build/zero-cache.log`. `results/` has runs from my
-machine.
+`@rocicorp/zero` is installed from `mono/packages/zero`, so after changing the
+submodule, run `pnpm zero` again to rebuild it and reinstall.
+
+The app is in `src/`: the SSR and query servers, and the browser bundle.
+`bench/` starts Postgres with Testcontainers, zero-cache, the servers and
+Chromium, and stops them all when it finishes. It uses ports 17601 to 17849,
+prints the results and writes them to `.build/results.md`. zero-cache's log goes
+to `.build/zero-cache.log`. `results/` has runs from my machine.
 
 | Option            | Default |                                                                     |
 | ----------------- | ------- | ------------------------------------------------------------------- |
