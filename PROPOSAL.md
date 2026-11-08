@@ -1,25 +1,37 @@
-_Draft for issue 3491, for review before posting._
+I built SSR for Zero, including copying hydrations between client groups, to make
+this proposal concrete. I'm not at Rocicorp and can't run your private tests, so
+none of this has run against them, and I don't expect it to merge as is.
 
-# SSR with hydration: a working demonstration
+PR: [link once opened]
+Demo: [synapdeck/zero-ssr-demo](https://github.com/synapdeck/zero-ssr-demo).
+`node run.mjs --verify` runs Postgres, zero-cache and Chromium.
 
-I've been working on this issue from outside Rocicorp, and I'd rather show something running than describe an idea. This is a proposal with working code, and I don't expect it to land as is. In particular, **I can't run your private test suite**: `packages/zero-cache` has no test files in the public repo, so none of this has run against it.
+It follows your July comment: the server connection is its own client group,
+queries are reused across client groups, and request metadata routes a user's
+server and browser connections together. On the client side, the PR has:
 
-It follows your comment from July: queries reused across client groups, the server connection as its own client group, and request metadata that routes a user's server and client connections together.
+- A fix for `useQuery` leaking a query when a render never commits. This affects
+  browsers today.
+- `QuerySnapshotCollector` and `QuerySnapshotProvider`, for complete HTML from the
+  server and hydration with no empty flash.
+- `ZeroPool`, long-lived server-side `Zero` instances per user, so rendering a live
+  query needs no round trip.
 
-The demo is in its own repo, [synapdeck/zero-ssr-demo](https://github.com/synapdeck/zero-ssr-demo), with Zero as a submodule on the branch: `node run.mjs --verify` runs real Postgres, zero-cache and Chromium. [Link to the PR once opened.]
+And in zero-cache:
 
-## What's there
+- `affinityKey`, which puts a user's connections on one sync worker. A load
+  balancer can hash on it too.
+- `hydrationClone`, hidden and `off` by default. `on` copies a hydration from
+  another group on the same worker with the same
+  `(clientSchemaKey, transformationHash)` at the same version. `shadow` hydrates
+  normally and compares the result with what it could have copied.
 
-One PR, `typedrat/ssr`, in two halves:
+Copying happens in `PipelineDriver.addQuery` and yields the same row changes as a
+hydration, so the view syncer and CVR code barely change. When anything doesn't
+match, it hydrates normally.
 
-- **The client.** A fix for `useQuery` leaking a query when a render never commits, which **affects browsers today and is useful without the rest**. `QuerySnapshotCollector` / `QuerySnapshotProvider`, for complete HTML on the server and hydration with no empty flash. `ZeroPool`, long-lived server instances per user, so a render of a live query needs no round trip.
-- **zero-cache.** `affinityKey`, which places a user's connections on one sync worker and is visible to a load balancer. `hydrationClone`, hidden and off by default: `shadow` compares hydrations with what could have been copied, and `on` copies a hydration from a group with the same `(clientSchemaKey, transformationHash)` at the same version. Plus a fuzz test.
-
-Copying happens inside `PipelineDriver.addQuery`, which yields the same row changes a hydration does, so the view syncer and CVR paths are almost untouched. It falls back to hydrating whenever anything doesn't match.
-
-## Results
-
-500,000 issues, 1,000,000 comments, one node, 4 sync workers, medians of 5 first visits per page.
+With 500,000 issues, 1,000,000 comments, one node and 4 sync workers, these are
+medians of 5 first visits per page, 6 s apart:
 
 | Page     | Query                              | Hydration: off → on | Browser live: off → on |
 | -------- | ---------------------------------- | ------------------- | ---------------------- |
@@ -28,44 +40,78 @@ Copying happens inside `PipelineDriver.addQuery`, which yields the same row chan
 | `thread` | Scalar subquery, 404 rows          | 2 ms → 4 ms         | 109 ms → 113 ms        |
 | `total`  | Filtered count (falls back)        | 731 ms → 750 ms     | 870 ms → 926 ms        |
 
-**Copying only helps queries that read much more than they return.** For anything else it's no faster and can be slightly slower, because the rows still have to be looked up one by one and written to the new group's CVR. For comparison, a second client joining an already-live group synced 39–71% faster than a new group on row-heavy queries, so copying CVR rows in bulk might capture some of that. I haven't tried it.
+Copying only helps queries that read far more rows than they return. Otherwise
+it's about the same or slightly slower, because each row is still looked up and
+written to the new group's CVR. A second client joining an already-live group
+synced 39–71% faster than a new group on row-heavy queries, so copying CVR rows in
+bulk might help there. I haven't tried it. Separately, repeat server renders of a
+live query through `ZeroPool` took 0.4–1.3 ms, against 18–22 ms for a new `Zero`
+per request (in an earlier, smaller test).
 
-Separately from copying, later server renders of a live query took 0.4–1.3 ms through `ZeroPool`, against 18–22 ms for a new `Zero` per request in an earlier, smaller test.
+Visits 6 s apart are the best case for copying. Opening browsers on `search` at the
+same time, with connections left open:
 
-### How often it copies
+| Burst                      | Workers | Copied               | Median browser live: off → on                                     |
+| -------------------------- | ------- | -------------------- | ----------------------------------------------------------------- |
+| 1 browser each for 5 users | 4       | 5/5, both runs       | 919 ms → 140 ms, and 962 ms → 1,053 ms                            |
+| 1 browser each for 5 users | 1       | 5/5                  | 4,018 ms → 250 ms                                                 |
+| 16 browsers for one user   | 4       | 7/16, all three runs | 2,835 ms → 2,825 ms, 2,871 ms → 3,162 ms, and 2,956 ms → 7,560 ms |
+| 16 browsers for one user   | 1       | 16/16                | 12,465 ms → 2,329 ms                                              |
 
-Those visits are 6 seconds apart, which is the best case: each browser finds a donor on a quiet worker. So I also opened browsers on `search` at once, and the copy rate depends heavily on the shape of the traffic.
+There are only a few samples each. I can't explain the 1,053 ms and 7,560 ms
+results. Both came from one run while the machine was busier, but I haven't
+confirmed that's the cause.
 
-| Burst, each connection staying open | Workers | Copied               | Median browser live: off → on                                     |
-| ----------------------------------- | ------- | -------------------- | ----------------------------------------------------------------- |
-| One browser each for 5 users        | 4       | 5/5, both runs       | 919 ms → 140 ms, and 962 ms → 1,053 ms                            |
-| One browser each for 5 users        | 1       | 5/5                  | 4,018 ms → 250 ms                                                 |
-| 16 browsers for one user            | 4       | 7/16, all three runs | 2,835 ms → 2,825 ms, 2,871 ms → 3,162 ms, and 2,956 ms → 7,560 ms |
-| 16 browsers for one user            | 1       | 16/16                | 12,465 ms → 2,329 ms                                              |
+Most of the 16 browsers for one user miss because `SyncerAssigner` stops honoring
+affinity once a worker has 4 more groups than the least loaded one, and the
+overflow lands on workers with no donor. I picked that limit arbitrarily. Shared
+keys, such as logged-out pages, would hit it hardest. In a separate stress run
+with overlapping keepalives, 62 hydrations copied and 60 found no donor. Some of
+those 60 were first hydrations, and I didn't break down the rest.
 
-These are few samples each. **I can't explain the two slow runs**, 1,053 ms and 7,560 ms. They came from the same run, while the machine was busier, but I haven't shown that was the cause.
+To check correctness without your test suite:
 
-One user with 16 browsers misses because `SyncerAssigner` stops honoring affinity once a worker is 4 groups above the least loaded, so most of them overflow to workers with no donor, and browsers on one worker can't copy from another. That limit trades copies for balance, and it's arbitrary. Popular shared queries, such as logged-out pages under one `affinityKey`, would hit it hardest. In a separate stress run where groups overlapped in their keepalive window, 62 hydrations copied and 60 found no donor. Some of those were first hydrations, and I didn't break down the rest.
+- Against real CVR data with writes running: 20 rounds, 32 copies, and 12 pipeline
+  resets from scalar changes. There were no differences between a clone and its
+  donor or a fresh group, and no refcount differences across 15,059 `cvr.rows`
+  entries. In an earlier harness, refcounts I deliberately tripled, which the
+  signature check can't see, were caught immediately.
+- A fuzz test, `pipeline-history.test.ts`, sends seeded writes through real
+  `PipelineDriver`s, and compares long-lived pipelines with fresh ones and clones
+  with donors. It caught a real bug: `Join` and `FlippedJoin` build their own
+  `JoinIndex`, and copies were dropping child rows. It uses a stand-in for the CVR
+  row list, so it doesn't cover that path.
+- In shadow mode, 59 of 115 hydrations under writes had a donor, and none
+  conflicted. 29 differed only by the extra state described below.
 
-## How I checked it
+Some things you'd want to know:
 
-With no suite to run against, I built what I could:
+- Long-lived pipelines carry extra state: `Cap` entries left behind by advancing,
+  and `EXISTS` proof rows that can differ from a fresh pipeline's. So a clone takes
+  its state and rows from a single donor, and a fresh hydration isn't a valid
+  reference for proof rows.
+- Copying blocks the worker. About 100,000 state entries took 36–43 ms in one step,
+  because the donor could change if the copy yielded.
+- A render right after a write is stale (8 of 8 times) because of replica lag. Live
+  sync corrects it after hydration, but a form post and redirect can briefly show
+  old data, and a crawler can keep it. A fix needs a way to wait for a replica
+  version.
+- Aggregates always hydrate normally. Copying them would need handling for
+  `GroupBy`'s `#hydrated` flag, synthetic rows, and query IDs in table names.
+- On a first visit, a user's own edit stays hidden until the server confirms the
+  query. From reading the code, the worst case is about a minute on a stuck
+  connection, but I didn't measure it. Returning visitors with `cached` rows see
+  the edit immediately.
+- Multiple nodes are untested. I confirmed that Envoy can route on `affinityKey`
+  (`MAGLEV` with a `query_parameter` hash) with WebSocket upgrades, against
+  stand-in pods and one real zero-cache. I didn't test draining or scaling.
 
-- **Against real CVR data, with writes running:** 20 rounds, 32 copies, 12 pipeline resets from a scalar's value changing. 0 differences between clones and donors, 0 against fresh groups, and 0 refcount differences across 15,059 `cvr.rows` entries. As a negative control in an earlier harness, deliberately tripled refcounts, which the signature check can't see, were caught immediately.
-- **Fuzz test:** `pipeline-history.test.ts` drives seeded writes through real `PipelineDriver`s, comparing long-lived pipelines to fresh ones and clones to donors. It found a real bug during development: `Join` and `FlippedJoin` build their own `JoinIndex`, and copies were silently losing child rows. It uses a stand-in for the CVR row list, so it doesn't cover that path by itself.
-- **Shadow mode:** of 115 hydrations under writes on real data, 59 had a usable donor to compare with, and none conflicted. 29 of those differed only by the extra state described below.
+What I'd like your take on:
 
-## Things you'd want to know
-
-- **Long-lived pipelines hold extra state.** Advancing leaves `Cap` entries behind that a fresh hydration wouldn't have, and `EXISTS` can legitimately keep different proof rows than a fresh pipeline. So a clone must take its state and rows from one donor, and a fresh hydration isn't a valid reference for proof rows.
-- **Copying can block a worker.** About 100,000 state entries took 36–43 ms in one uninterrupted step, because the donor's state could change if it yielded.
-- **A render right after a write is stale.** Replica lag means a render immediately after a Postgres commit showed old data 8 times out of 8. Live sync should correct it once hydrated, but a form post and redirect could briefly show old data, and a crawler could keep it. A real fix needs a way to wait for a replica version.
-- **Aggregates hydrate normally.** `GroupBy`'s `#hydrated` flag, synthetic rows and query IDs in table names all need handling.
-- **The hold has a user-visible cost.** On a first visit, a user's own edit stays hidden until the server confirms the query, which from reading the code should be about a minute at worst on a stuck connection (not measured). Returning visitors with `cached` rows see it immediately.
-- **Multiple nodes are untested.** Pod-level routing needs the load balancer to hash on `affinityKey`. I confirmed that Envoy can do this (`MAGLEV` and a `query_parameter` hash policy) with WebSocket upgrades, against stand-in pods, and through to a real zero-cache with one upstream. I didn't test draining or scaling.
-
-## What I'd like your read on
-
-1. **Is copying state the right approach, or do you want one shared pipeline per query?** Your shared-advance telemetry suggests you may be heading there. Copying leaves advancement as it is, so each group still pays for that, but it's much less invasive.
-2. **Is the first-visit hold acceptable?** It's the main user-facing trade-off in the hydration design.
-3. **Would you rather review it in pieces?** The commits are ordered so the client half comes first and doesn't depend on any `zero-cache` changes, and the first commit, the `useQuery` leak fix, stands alone. I'm happy to split either out.
+1. Is copying state the right approach, or do you want one shared pipeline per
+   query? Your shared-advance telemetry suggests the latter. With copying, each
+   group still pays for its own advancement, but it's much less invasive.
+2. Is the first-visit hold acceptable? It's the main trade-off users would see.
+3. Would you rather review this in pieces? The client half comes first in the
+   commits and doesn't depend on the zero-cache changes. The first commit, the
+   `useQuery` fix, stands alone.
