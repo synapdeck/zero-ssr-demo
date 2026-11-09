@@ -14,8 +14,6 @@ server and browser connections together. On the client side, the PR has:
   browsers today.
 - `QuerySnapshotCollector` and `QuerySnapshotProvider`, for complete HTML from the
   server and hydration with no empty flash.
-- `ZeroPool`, long-lived server-side `Zero` instances per user, so rendering a live
-  query needs no round trip.
 
 And in zero-cache:
 
@@ -35,31 +33,47 @@ medians of 5 first visits per page, 6 s apart:
 
 | Page     | Query                              | Hydration: off → on | Browser live: off → on |
 | -------- | ---------------------------------- | ------------------- | ---------------------- |
-| `search` | Reads ~100,000 rows, returns a few | 753 ms → 33 ms      | 866 ms → 136 ms        |
-| `list`   | Returns the 3,400 rows it reads    | 24 ms → 28 ms       | 174 ms → 189 ms        |
-| `thread` | Scalar subquery, 404 rows          | 2 ms → 4 ms         | 109 ms → 113 ms        |
-| `total`  | Filtered count (falls back)        | 731 ms → 750 ms     | 870 ms → 926 ms        |
+| `search` | Reads ~100,000 rows, returns a few | 737 ms → 32 ms      | 864 ms → 137 ms        |
+| `list`   | Returns the 3,400 rows it reads    | 22 ms → 27 ms       | 161 ms → 163 ms        |
+| `thread` | Scalar subquery, 404 rows          | 2 ms → 5 ms         | 106 ms → 103 ms        |
+| `total`  | Filtered count (falls back)        | 706 ms → 746 ms     | 852 ms → 920 ms        |
 
 Copying only helps queries that read far more rows than they return. Otherwise
 it's about the same or slightly slower, because each row is still looked up and
 written to the new group's CVR. A second client joining an already-live group
 synced 39–71% faster than a new group on row-heavy queries, so copying CVR rows in
-bulk might help there. I haven't tried it. Separately, repeat server renders of a
-live query through `ZeroPool` took 0.4–1.3 ms, against 18–22 ms for a new `Zero`
-per request (in an earlier, smaller test).
+bulk might help there. I haven't tried it.
+
+The PR doesn't decide how a server gets its `Zero` instances. The demo keeps one
+per user, in a small cache that's app code, so their queries stay live between
+renders. Compared with a new `Zero` per request, repeat renders (with copying on)
+took:
+
+| Page     | One `Zero` per user | New `Zero` per request |
+| -------- | ------------------- | ---------------------- |
+| `search` | 0.8 ms              | 24 ms                  |
+| `list`   | 1.9 ms              | 108 ms                 |
+| `thread` | 0.6 ms              | 74 ms                  |
+| `total`  | 0.6 ms              | 1,584 ms               |
+
+Copying keeps per-request renders of `search` cheap, but anything that can't be
+copied hydrates again on every request.
 
 Visits 6 s apart are the best case for copying. Opening browsers on `search` at the
 same time, with connections left open:
 
-| Burst                      | Workers | Copied               | Median browser live: off → on                                     |
-| -------------------------- | ------- | -------------------- | ----------------------------------------------------------------- |
-| 1 browser each for 5 users | 4       | 5/5, both runs       | 919 ms → 140 ms, and 962 ms → 1,053 ms                            |
-| 1 browser each for 5 users | 1       | 5/5                  | 4,018 ms → 250 ms                                                 |
-| 16 browsers for one user   | 4       | 7/16, all three runs | 2,835 ms → 2,825 ms, 2,871 ms → 3,162 ms, and 2,956 ms → 7,560 ms |
-| 16 browsers for one user   | 1       | 16/16                | 12,465 ms → 2,329 ms                                              |
+| Burst                      | Workers | Copied | Median browser live: off → on |
+| -------------------------- | ------- | ------ | ----------------------------- |
+| 1 browser each for 5 users | 4       | 5/5    | 987 ms → 164 ms               |
+| 1 browser each for 5 users | 1       | 5/5    | 4,237 ms → 440 ms             |
+| 16 browsers for one user   | 4       | 7/16   | 2,731 ms → 4,336 ms           |
+| 16 browsers for one user   | 1       | 16/16  | 12,548 ms → 926 ms            |
 
-There are only a few samples each, and I don't know the cause of the 1,053 ms
-and 7,560 ms outliers.
+Each is one run. 16 browsers for one user on 4 workers got slower with copying
+on, as two of three earlier runs did. With a new `Zero` per
+request instead of one per user, the same burst went from 2,895 ms to 2,764 ms. I
+suspect copies held up workers that were busy hydrating the other browsers'
+groups, but I haven't confirmed it.
 
 Most of the 16 browsers for one user miss because `SyncerAssigner` stops honoring
 affinity once a worker has 4 more groups than the least loaded one, and the
@@ -70,10 +84,10 @@ those 60 were first hydrations, and I didn't break down the rest.
 
 To check correctness without your test suite:
 
-- Against real CVR data with writes running: 20 rounds, 32 copies, and 12 pipeline
-  resets from scalar changes. There were no differences between a clone and its
-  donor or a fresh group, and no refcount differences across 15,059 `cvr.rows`
-  entries. In an earlier harness, refcounts I deliberately tripled, which the
+- Against real CVR data with writes running: 105 checks, 184 copies, and 80
+  pipeline resets from scalar changes. There were no differences between a clone
+  and its donor or a fresh group, and no refcount differences across 74,649
+  `cvr.rows` entries. In an earlier harness, refcounts I deliberately tripled, which the
   signature check can't see, were caught immediately.
 - A fuzz test, `pipeline-history.test.ts`, sends seeded writes through real
   `PipelineDriver`s, and compares long-lived pipelines with fresh ones and clones

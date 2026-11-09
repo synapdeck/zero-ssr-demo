@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import http from 'node:http';
 import {Writable} from 'node:stream';
-import {Zero, ZeroPool} from '@rocicorp/zero';
+import {Zero} from '@rocicorp/zero';
 import {
   QuerySnapshotCollector,
   QuerySnapshotProvider,
@@ -11,26 +11,56 @@ import {
 import {renderToPipeableStream} from 'react-dom/server';
 import {App} from '../app/app.tsx';
 import {mutators, schema, type Context, type PageName} from '../app/schema.ts';
+import {ZeroPool} from './zero-pool.ts';
 
 const CACHE_URL = `http://127.0.0.1:${process.env['CACHE_PORT']}`;
 // Built next to this server, into dist/.
 const BROWSER_JS = readFileSync(new URL('../browser.js', import.meta.url));
 
-// One long-lived instance per user, which keeps their queries live between
-// renders and is what a browser's client group can copy from.
-const pool = new ZeroPool({
-  create: userID =>
-    new Zero({
-      cacheURL: CACHE_URL,
-      schema,
-      mutators,
-      userID,
-      auth: `user:${userID}`,
-      context: {userID} as Context,
-      kvStore: 'mem',
-      logLevel: 'error',
-    }),
-});
+const createZero = (userID: string, storageKey?: string) =>
+  new Zero({
+    cacheURL: CACHE_URL,
+    schema,
+    mutators,
+    userID,
+    auth: `user:${userID}`,
+    context: {userID} as Context,
+    storageKey,
+    kvStore: 'mem',
+    logLevel: 'error',
+  });
+
+/**
+ * How the server gets a Zero instance for a render:
+ *
+ * - `pool`: one long-lived instance per user, which keeps their queries live
+ *   between renders.
+ * - `per-request`: a new instance per request, closed after rendering. Its
+ *   in-memory store outlives it, so the next one for the user reuses its
+ *   client group.
+ * - `fresh`: a new instance and client group per request.
+ */
+const MODE = process.env['SSR_ZERO'] ?? 'pool';
+const pool = new ZeroPool(userID => createZero(userID));
+let fresh = 0;
+
+async function withZero<T>(
+  userID: string,
+  fn: (zero: Zero<typeof schema>) => Promise<T>,
+): Promise<T> {
+  if (MODE === 'pool') {
+    return fn(pool.get(userID));
+  }
+  const zero = createZero(
+    userID,
+    MODE === 'fresh' ? `fresh${fresh++}` : undefined,
+  );
+  try {
+    return await fn(zero);
+  } finally {
+    await zero.close();
+  }
+}
 
 function render(zero: Zero<typeof schema>, page: PageName) {
   const collector = new QuerySnapshotCollector();
@@ -69,7 +99,7 @@ http
     const user = url.searchParams.get('user') ?? 'alice';
     const start = performance.now();
     try {
-      const {html, snapshots} = await pool.use(user, zero =>
+      const {html, snapshots} = await withZero(user, zero =>
         render(zero, page),
       );
       res.writeHead(200, {

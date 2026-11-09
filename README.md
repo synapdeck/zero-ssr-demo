@@ -33,11 +33,13 @@ to `.build/zero-cache.log`. `results/` has runs from my machine.
 | `--burst`         | 0       | Also open this many browsers at once on `search`, and 1 per 5 users |
 | `--verify`        | off     | Also check CVR data                                                 |
 | `--verify-rounds` | 3       | Rounds of those checks                                              |
+| `--ssr-zero`      | pool    | `pool`, `per-request` or `fresh`: how the SSR server gets a `Zero`  |
 
-The SSR server renders each page from a long-lived `ZeroPool` instance. Chromium
-then hydrates the page and connects as its own client group, so zero-cache runs
-each query twice: once for the server's group, and once for the browser's.
-Copying the hydration targets the second run.
+The SSR server renders each page from a long-lived `Zero` instance for the user,
+kept in `src/server/zero-pool.ts`. Chromium then hydrates the page and connects
+as its own client group, so zero-cache runs each query twice: once for the
+server's group, and once for the browser's. Copying the hydration targets the
+second run.
 
 | Page     | Query                                      | Shows                                                     |
 | -------- | ------------------------------------------ | --------------------------------------------------------- |

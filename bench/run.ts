@@ -32,6 +32,7 @@ const {values: args} = parseArgs({
     'verify': {type: 'boolean', default: false},
     'burst': {type: 'string', default: '0'},
     'verify-rounds': {type: 'string', default: '3'},
+    'ssr-zero': {type: 'string', default: 'pool'},
   },
 });
 const ISSUES = Number(args.issues);
@@ -98,6 +99,7 @@ async function startSSR() {
   const ssr = start('node', ['dist/server/ssr-server.js'], {
     SSR_PORT: String(PORTS.ssr),
     CACHE_PORT: String(PORTS.cache),
+    SSR_ZERO: args['ssr-zero'],
   });
   await waitFor('ssr server', () =>
     ok(`http://127.0.0.1:${PORTS.ssr}/browser.js`),
@@ -289,6 +291,7 @@ try {
       : undefined;
   const verified = args.verify ? await runVerify() : undefined;
   const text = report({
+    ssrZero: args['ssr-zero'],
     issues: ISSUES,
     workers: WORKERS,
     visits: VISITS,

@@ -22,6 +22,7 @@ export type BurstResult = {
 type Modes<T> = Record<'off' | 'on', T>;
 
 export type Report = {
+  ssrZero: string;
   issues: number;
   workers: number;
   visits: number;
@@ -77,7 +78,7 @@ export function report(r: Report): string {
     `# hydrationClone off vs on`,
     ``,
     `${r.issues} issues, ${r.issues * 2} comments, ${r.workers} sync workers, one node, ` +
-      `${r.visits} first visits per page, each in a new Chromium context.`,
+      `${r.visits} first visits per page, each in a new Chromium context. SSR instances: \`${r.ssrZero}\`.`,
     ``,
     `"Hydration" is what zero-cache logged for the browser's client group. "Browser live" is`,
     `the time from navigation start until the browser's own view of the query is complete.`,
@@ -126,7 +127,7 @@ export function report(r: Report): string {
       ``,
       `## Verification with writes running`,
       ``,
-      `| Rounds | Copies | Scalar resets | Clone vs donor differences | Clone vs fresh differences | CVR rows compared | CVR refcount differences | Hydration failures |`,
+      `| Checks | Copies | Scalar resets | Clone vs donor differences | Clone vs fresh differences | CVR rows compared | CVR refcount differences | Hydration failures |`,
       `|---|---|---|---|---|---|---|---|`,
       `| ${x.rounds} | ${v.copied} | ${v.scalarResets} | ${x.viewDiffs} | ${x.freshDiffs} | ` +
         `${x.refRows} | ${x.refDiffs} | ${v.hydrationFailures} |`,
