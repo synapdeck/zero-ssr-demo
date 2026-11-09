@@ -23,7 +23,17 @@ The app is in `src/`: the SSR and query servers, and the browser bundle.
 `bench/` starts Postgres with Testcontainers, zero-cache, the servers and
 Chromium, and stops them all when it finishes. It uses ports 17601 to 17849,
 prints the results and writes them to `.build/results.md`. zero-cache's log goes
-to `.build/zero-cache.log`, with a copy kept for each phase. `results/` has runs from my machine.
+to `.build/zero-cache.log`, with a copy kept for each phase. `results/` has runs from my machine:
+
+| File                     | Command                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `4-workers.md`           | `pnpm bench --verify --verify-rounds 20`                                 |
+| `bursts.md`              | `pnpm bench --visits 0 --burst 16 --burst-runs 3`                        |
+| `bursts-after-visits.md` | `pnpm bench --burst 16 --burst-runs 3`                                   |
+| `1-worker.md`            | `pnpm bench --workers 1 --burst 16 --burst-runs 3`                       |
+| `per-request.md`         | `pnpm bench --ssr-zero per-request`                                      |
+| `fresh.md`               | `pnpm bench --ssr-zero fresh`                                            |
+| `shadow.md`              | `pnpm bench --visits 0 --verify --verify-rounds 20 --verify-mode shadow` |
 
 | Option            | Default |                                                                     |
 | ----------------- | ------- | ------------------------------------------------------------------- |
@@ -34,6 +44,7 @@ to `.build/zero-cache.log`, with a copy kept for each phase. `results/` has runs
 | `--burst-runs`    | 1       | Repeat the bursts, alternating off and on                           |
 | `--verify`        | off     | Also check CVR data                                                 |
 | `--verify-rounds` | 3       | Rounds of those checks                                              |
+| `--verify-mode`   | on      | `on` or `shadow`: the `hydrationClone` mode the checks run with     |
 | `--ssr-zero`      | pool    | `pool`, `per-request` or `fresh`: how the SSR server gets a `Zero`  |
 
 The SSR server renders each page from a long-lived `Zero` instance for the user,
@@ -47,7 +58,7 @@ second run.
 | `search` | Reads every issue a user owns, returns few | The best case                                             |
 | `list`   | Top 1,000 issues with comments             | Little gain, because rows still go to the new group's CVR |
 | `thread` | Scalar subquery                            | Scalar subqueries can be copied                           |
-| `total`  | Filtered count                             | Aggregates fall back to a normal hydration                |
+| `total`  | Filtered count                             | Aggregates can be copied                                  |
 
 Each visit also commits a write and checks that it reaches the page. `--verify`
 runs a client group next to a donor while writes happen, including writes that

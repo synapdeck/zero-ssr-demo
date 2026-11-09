@@ -40,6 +40,8 @@ export type Report = {
           refDiffs?: number;
           failures?: string[];
         };
+        mode: string;
+        outcomes: Record<string, number>;
         copied: number;
         scalarResets: number;
         hydrationFailures: number;
@@ -51,7 +53,7 @@ const KINDS: Record<PageName, string> = {
   search: 'Reads a lot, returns little',
   list: 'Returns what it reads',
   thread: 'Scalar subquery',
-  total: 'Aggregate (always hydrates)',
+  total: 'Filtered count',
 };
 
 const ms = (n: number) => (Number.isFinite(n) ? `${Math.round(n)} ms` : '-');
@@ -136,11 +138,21 @@ export function report(r: Report): string {
       ``,
       `## Verification with writes running`,
       ``,
+      `hydrationClone=${v.mode}.`,
+      ``,
       `| Checks | Copies | Scalar resets | Clone vs donor differences | Clone vs fresh differences | CVR rows compared | CVR refcount differences | Hydration failures |`,
       `|---|---|---|---|---|---|---|---|`,
       `| ${x.rounds} | ${v.copied} | ${v.scalarResets} | ${x.viewDiffs} | ${x.freshDiffs} | ` +
         `${x.refRows} | ${x.refDiffs} | ${v.hydrationFailures} |`,
       ...(x.failures ?? []).map(f => `- ${f}`),
+      ``,
+      `Hydrations that weren't copied, by what a comparison with a donor found:`,
+      ``,
+      `| Outcome | Hydrations |`,
+      `|---|---|`,
+      ...Object.entries(v.outcomes)
+        .toSorted(([a], [b]) => a.localeCompare(b))
+        .map(([outcome, n]) => `| ${outcome} | ${n} |`),
     );
   }
   return `${lines.join('\n')}\n`;

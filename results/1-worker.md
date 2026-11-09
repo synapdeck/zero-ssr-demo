@@ -9,10 +9,10 @@ faster but not what `list` costs.
 
 | Page | Query | Rows read: off → on | Hydration: off → on | Browser live: off → on | First SSR render | Later SSR renders |
 |---|---|---|---|---|---|---|
-| search | Reads a lot, returns little | 100003 → 0 | 743 ms → 32 ms | 863 ms → 127 ms | 875 ms | 0.8 ms |
-| list | Returns what it reads | 3400 → 0 | 28 ms → 74 ms | 187 ms → 334 ms | 108 ms | 10.0 ms |
-| thread | Scalar subquery | 404 → 1 | 2 ms → 4 ms | 112 ms → 111 ms | 31 ms | 0.7 ms |
-| total | Aggregate (always hydrates) | 100003 → 100003 | 737 ms → 757 ms | 841 ms → 1058 ms | 810 ms | 0.6 ms |
+| search | Reads a lot, returns little | 100003 → 0 | 832 ms → 9 ms | 956 ms → 113 ms | 865 ms | 0.8 ms |
+| list | Returns what it reads | 3400 → 0 | 29 ms → 29 ms | 183 ms → 175 ms | 111 ms | 1.8 ms |
+| thread | Scalar subquery | 404 → 1 | 2 ms → 4 ms | 101 ms → 117 ms | 28 ms | 0.7 ms |
+| total | Filtered count | 100003 → 0 | 725 ms → 9 ms | 820 ms → 95 ms | 789 ms | 0.5 ms |
 
 | Page | Empty flashes: off / on | Hydration errors: off / on | Live updates reached the page: off / on |
 |---|---|---|---|
@@ -23,14 +23,22 @@ faster but not what `list` costs.
 
 ## 16 browsers for one user at once on `search`
 
-| hydrationClone | Copied | Hydration | Browser live | Slowest browser |
-|---|---|---|---|---|
-| off | 0/16 | 750 ms | 12548 ms | 12558 ms |
-| on | 16/16 | 37 ms | 926 ms | 981 ms |
+| Run | hydrationClone | Copied | Hydration | Browser live | Slowest browser |
+|---|---|---|---|---|---|
+| 1 | off | 0/16 | 730 ms | 12232 ms | 12244 ms |
+| 1 | on | 16/16 | 8 ms | 474 ms | 494 ms |
+| 2 | off | 0/16 | 743 ms | 12368 ms | 12378 ms |
+| 2 | on | 16/16 | 9 ms | 496 ms | 512 ms |
+| 3 | off | 0/16 | 732 ms | 12203 ms | 12234 ms |
+| 3 | on | 16/16 | 8 ms | 528 ms | 536 ms |
 
 ## One browser each for 5 users at once on `search`
 
-| hydrationClone | Copied | Hydration | Browser live | Slowest browser |
-|---|---|---|---|---|
-| off | 0/5 | 797 ms | 4237 ms | 4245 ms |
-| on | 5/5 | 48 ms | 440 ms | 446 ms |
+| Run | hydrationClone | Copied | Hydration | Browser live | Slowest browser |
+|---|---|---|---|---|---|
+| 1 | off | 0/5 | 712 ms | 3756 ms | 3759 ms |
+| 1 | on | 5/5 | 8 ms | 209 ms | 214 ms |
+| 2 | off | 0/5 | 720 ms | 3793 ms | 3794 ms |
+| 2 | on | 5/5 | 8 ms | 195 ms | 199 ms |
+| 3 | off | 0/5 | 706 ms | 3713 ms | 3716 ms |
+| 3 | on | 5/5 | 8 ms | 196 ms | 199 ms |

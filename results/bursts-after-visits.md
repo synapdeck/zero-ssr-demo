@@ -9,10 +9,10 @@ faster but not what `list` costs.
 
 | Page | Query | Rows read: off → on | Hydration: off → on | Browser live: off → on | First SSR render | Later SSR renders |
 |---|---|---|---|---|---|---|
-| search | Reads a lot, returns little | 100003 → 0 | 770 ms → 44 ms | 921 ms → 157 ms | 903 ms | 0.8 ms |
-| list | Returns what it reads | 3400 → 0 | 23 ms → 31 ms | 179 ms → 199 ms | 110 ms | 2.5 ms |
-| thread | Scalar subquery | 404 → 1 | 2 ms → 4 ms | 105 ms → 110 ms | 24 ms | 0.7 ms |
-| total | Aggregate (always hydrates) | 100003 → 100003 | 735 ms → 719 ms | 844 ms → 897 ms | 838 ms | 0.5 ms |
+| search | Reads a lot, returns little | 100003 → 0 | 744 ms → 8 ms | 867 ms → 109 ms | 824 ms | 0.8 ms |
+| list | Returns what it reads | 3400 → 0 | 26 ms → 27 ms | 192 ms → 178 ms | 133 ms | 1.7 ms |
+| thread | Scalar subquery | 404 → 1 | 3 ms → 4 ms | 113 ms → 114 ms | 30 ms | 0.7 ms |
+| total | Filtered count | 100003 → 0 | 725 ms → 10 ms | 828 ms → 111 ms | 841 ms | 0.6 ms |
 
 | Page | Empty flashes: off / on | Hydration errors: off / on | Live updates reached the page: off / on |
 |---|---|---|---|
@@ -25,20 +25,20 @@ faster but not what `list` costs.
 
 | Run | hydrationClone | Copied | Hydration | Browser live | Slowest browser |
 |---|---|---|---|---|---|
-| 1 | off | 0/16 | 817 ms | 2760 ms | 6052 ms |
-| 1 | on | 7/16 | 796 ms | 2901 ms | 2947 ms |
-| 2 | off | 0/16 | 780 ms | 2702 ms | 5706 ms |
-| 2 | on | 7/16 | 772 ms | 2759 ms | 2834 ms |
-| 3 | off | 0/16 | 779 ms | 2669 ms | 5657 ms |
-| 3 | on | 7/16 | 762 ms | 2744 ms | 2823 ms |
+| 1 | off | 0/16 | 815 ms | 3672 ms | 4377 ms |
+| 1 | on | 13/16 | 15 ms | 1189 ms | 1203 ms |
+| 2 | off | 0/16 | 813 ms | 3649 ms | 4413 ms |
+| 2 | on | 13/16 | 13 ms | 1123 ms | 1177 ms |
+| 3 | off | 0/16 | 797 ms | 3502 ms | 3514 ms |
+| 3 | on | 13/16 | 13 ms | 1146 ms | 1209 ms |
 
 ## One browser each for 5 users at once on `search`
 
 | Run | hydrationClone | Copied | Hydration | Browser live | Slowest browser |
 |---|---|---|---|---|---|
-| 1 | off | 0/5 | 773 ms | 924 ms | 1700 ms |
-| 1 | on | 5/5 | 51 ms | 167 ms | 217 ms |
-| 2 | off | 0/5 | 776 ms | 898 ms | 1745 ms |
-| 2 | on | 5/5 | 48 ms | 169 ms | 218 ms |
-| 3 | off | 0/5 | 773 ms | 901 ms | 1734 ms |
-| 3 | on | 5/5 | 44 ms | 159 ms | 218 ms |
+| 1 | off | 0/5 | 759 ms | 1699 ms | 1706 ms |
+| 1 | on | 5/5 | 10 ms | 137 ms | 169 ms |
+| 2 | off | 0/5 | 1067 ms | 2322 ms | 2357 ms |
+| 2 | on | 5/5 | 9 ms | 115 ms | 152 ms |
+| 3 | off | 0/5 | 762 ms | 946 ms | 1661 ms |
+| 3 | on | 5/5 | 10 ms | 128 ms | 186 ms |

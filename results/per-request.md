@@ -9,10 +9,10 @@ faster but not what `list` costs.
 
 | Page | Query | Rows read: off → on | Hydration: off → on | Browser live: off → on | First SSR render | Later SSR renders |
 |---|---|---|---|---|---|---|
-| search | Reads a lot, returns little | 100003 → 0 | 726 ms → 40 ms | 880 ms → 169 ms | 810 ms | 23.9 ms |
-| list | Returns what it reads | 3400 → 0 | 22 ms → 25 ms | 239 ms → 265 ms | 211 ms | 107.8 ms |
-| thread | Scalar subquery | 404 → 1 | 2 ms → 3 ms | 788 ms → 179 ms | 91 ms | 74.1 ms |
-| total | Aggregate (always hydrates) | 100003 → 100003 | 721 ms → 698 ms | 1604 ms → 1635 ms | 783 ms | 1584.0 ms |
+| search | Reads a lot, returns little | 100003 → 0 | 779 ms → 12 ms | 1229 ms → 131 ms | 894 ms | 24.5 ms |
+| list | Returns what it reads | 3400 → 0 | 27 ms → 31 ms | 298 ms → 421 ms | 213 ms | 296.9 ms |
+| thread | Scalar subquery | 404 → 1 | 3 ms → 5 ms | 254 ms → 346 ms | 99 ms | 470.6 ms |
+| total | Filtered count | 100003 → 0 | 783 ms → 11 ms | 1955 ms → 947 ms | 852 ms | 946.7 ms |
 
 | Page | Empty flashes: off / on | Hydration errors: off / on | Live updates reached the page: off / on |
 |---|---|---|---|
@@ -20,17 +20,3 @@ faster but not what `list` costs.
 | list | 0 / 0 | 0 / 0 | 5/5 / 5/5 |
 | thread | 0 / 0 | 0 / 0 | 5/5 / 5/5 |
 | total | 0 / 0 | 0 / 0 | 5/5 / 5/5 |
-
-## 16 browsers for one user at once on `search`
-
-| hydrationClone | Copied | Hydration | Browser live | Slowest browser |
-|---|---|---|---|---|
-| off | 0/16 | 777 ms | 2895 ms | 5631 ms |
-| on | 7/16 | 770 ms | 2764 ms | 2873 ms |
-
-## One browser each for 5 users at once on `search`
-
-| hydrationClone | Copied | Hydration | Browser live | Slowest browser |
-|---|---|---|---|---|
-| off | 0/5 | 769 ms | 916 ms | 1732 ms |
-| on | 5/5 | 44 ms | 187 ms | 246 ms |

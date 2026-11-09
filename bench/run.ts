@@ -34,6 +34,7 @@ const {values: args} = parseArgs({
     'burst': {type: 'string', default: '0'},
     'burst-runs': {type: 'string', default: '1'},
     'verify-rounds': {type: 'string', default: '3'},
+    'verify-mode': {type: 'string', default: 'on'},
     'ssr-zero': {type: 'string', default: 'pool'},
   },
 });
@@ -248,8 +249,14 @@ async function runBursts(mode: 'off' | 'on', browser: Browser, sql: Sql) {
 }
 
 async function runVerify() {
-  log('verifying copies against real CVR data with writes running');
-  await startCache(pgURL, 'on', WORKERS, 'debug');
+  const mode = args['verify-mode'];
+  if (mode !== 'on' && mode !== 'shadow') {
+    throw new Error(`--verify-mode must be on or shadow, not ${mode}`);
+  }
+  log(
+    `verifying with hydrationClone=${mode} against real CVR data with writes running`,
+  );
+  await startCache(pgURL, mode, WORKERS, 'debug');
   const child = start(
     'node',
     ['bench/verify.ts'],
@@ -265,7 +272,14 @@ async function runVerify() {
   const code = await new Promise<number | null>(r => child.on('exit', r));
   const text = zeroLog();
   const count = (re: RegExp) => (text.match(re) ?? []).length;
+  // What each hydration that wasn't copied found when compared with a donor.
+  const outcomes: Record<string, number> = {};
+  for (const [, outcome] of text.matchAll(/hydration clone: ([a-z-]+)/g)) {
+    outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
+  }
   return {
+    mode,
+    outcomes,
     code,
     result: out.trim() ? JSON.parse(out.trim().split('\n').at(-1)!) : {},
     copied: count(/hydration copied/g),
