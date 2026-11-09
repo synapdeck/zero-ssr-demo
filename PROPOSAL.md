@@ -58,9 +58,8 @@ same time, with connections left open:
 | 16 browsers for one user   | 4       | 7/16, all three runs | 2,835 ms → 2,825 ms, 2,871 ms → 3,162 ms, and 2,956 ms → 7,560 ms |
 | 16 browsers for one user   | 1       | 16/16                | 12,465 ms → 2,329 ms                                              |
 
-There are only a few samples each. I can't explain the 1,053 ms and 7,560 ms
-results. Both came from one run while the machine was busier, but I haven't
-confirmed that's the cause.
+There are only a few samples each, and I don't know the cause of the 1,053 ms
+and 7,560 ms outliers.
 
 Most of the 16 browsers for one user miss because `SyncerAssigner` stops honoring
 affinity once a worker has 4 more groups than the least loaded one, and the
