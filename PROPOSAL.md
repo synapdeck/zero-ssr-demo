@@ -62,18 +62,25 @@ copied hydrates again on every request.
 Visits 6 s apart are the best case for copying. Opening browsers on `search` at the
 same time, with connections left open:
 
-| Burst                      | Workers | Copied | Median browser live: off → on |
-| -------------------------- | ------- | ------ | ----------------------------- |
-| 1 browser each for 5 users | 4       | 5/5    | 987 ms → 164 ms               |
-| 1 browser each for 5 users | 1       | 5/5    | 4,237 ms → 440 ms             |
-| 16 browsers for one user   | 4       | 7/16   | 2,731 ms → 4,336 ms           |
-| 16 browsers for one user   | 1       | 16/16  | 12,548 ms → 926 ms            |
+| Burst                      | Workers | Runs | Copied | Median browser live: off → on   | Slowest browser: off → on       |
+| -------------------------- | ------- | ---- | ------ | ------------------------------- | ------------------------------- |
+| 1 browser each for 5 users | 4       | 9    | 5/5    | 892–948 ms → 158–193 ms         | 1,700–1,845 ms → 214–269 ms     |
+| 1 browser each for 5 users | 1       | 1    | 5/5    | 4,237 ms → 440 ms               | 4,245 ms → 446 ms               |
+| 16 browsers for one user   | 4       | 9    | 7/16   | 2,669–2,999 ms → 2,744–3,076 ms | 5,657–6,052 ms → 2,823–3,128 ms |
+| 16 browsers for one user   | 1       | 1    | 16/16  | 12,548 ms → 926 ms              | 12,558 ms → 981 ms              |
 
-Each is one run. 16 browsers for one user on 4 workers got slower with copying
-on, as two of three earlier runs did. With a new `Zero` per
-request instead of one per user, the same burst went from 2,895 ms to 2,764 ms. I
-suspect copies held up workers that were busy hydrating the other browsers'
-groups, but I haven't confirmed it.
+With 16 browsers for one user on 4 workers, the affinity worker gets the server's
+group and 7 browsers, and the other workers get 3 each. A worker interleaves the
+hydrations it holds, so its last one finishes after all of them. Copying finishes
+the affinity worker's 7 by about 0.4 s instead of about 5.7 s, which is why the
+slowest browser gets twice as fast. The median browser is one of the other 9,
+which hydrate normally. They did the same work with copying on, but finished
+50–100 ms later. I think the copied browsers' sync traffic now overlaps their
+hydrations instead of following them, but I haven't confirmed it.
+
+One earlier run had a median of 4,336 ms with copying on. In that run the median
+hydration took 1,194 ms instead of about 800 ms, which copying doesn't change on a
+worker with no donor, and it didn't happen in the 9 runs above.
 
 Most of the 16 browsers for one user miss because `SyncerAssigner` stops honoring
 affinity once a worker has 4 more groups than the least loaded one, and the

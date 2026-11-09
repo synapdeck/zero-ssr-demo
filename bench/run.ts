@@ -11,6 +11,7 @@ import {
   log,
   ok,
   PORTS,
+  keepLog,
   removeReplica,
   sleep,
   start,
@@ -31,6 +32,7 @@ const {values: args} = parseArgs({
     'workers': {type: 'string', default: '4'},
     'verify': {type: 'boolean', default: false},
     'burst': {type: 'string', default: '0'},
+    'burst-runs': {type: 'string', default: '1'},
     'verify-rounds': {type: 'string', default: '3'},
     'ssr-zero': {type: 'string', default: 'pool'},
   },
@@ -39,6 +41,7 @@ const ISSUES = Number(args.issues);
 const VISITS = Number(args.visits);
 const WORKERS = Number(args.workers);
 const BURST = Number(args.burst);
+const BURST_RUNS = Number(args['burst-runs']);
 const USERS = ['alice', 'other1', 'other2', 'other3', 'other4'];
 // How long a client group's view syncer outlives its last connection. Visits
 // wait this long so that each browser is placed like a new user's, not on a
@@ -160,6 +163,7 @@ async function runMode(mode: 'off' | 'on', browser: Browser, sql: Sql) {
   }
   const hashes = await queryHashes(sql);
   const events = hydrations();
+  keepLog(`visits-${mode}`);
   await stop(ssr);
   const summary = {} as Record<PageName, PageResult>;
   for (const page of PAGES) {
@@ -185,6 +189,8 @@ async function runMode(mode: 'off' | 'on', browser: Browser, sql: Sql) {
  * visits above, so that groups pile up on a worker. A hydration that read far
  * less than the server's own was copied.
  */
+let burstCount = 0;
+
 async function runBurst(
   mode: 'off' | 'on',
   browser: Browser,
@@ -212,6 +218,7 @@ async function runBurst(
   await sleep(500);
   const hashes = await queryHashes(sql);
   const events = hydrations().filter(e => e.hash === hashes['search']);
+  keepLog(`burst-${++burstCount}-${mode}-${users.length}`);
   const mostRead = Math.max(...events.map(e => e.rowsRead));
   const copied = events.filter(e => e.rowsRead < mostRead / 100);
   // Whatever copied was a browser, as was anything past each server's own.
@@ -278,17 +285,27 @@ try {
   ({url: pgURL, sql} = await startPostgres(ISSUES));
   start('node', ['dist/server/api-server.js'], {API_PORT: String(PORTS.api)});
   browser = await chromium.launch();
-  const results = {
-    off: await runMode('off', browser, sql),
-    on: await runMode('on', browser, sql),
-  };
-  const bursts =
-    BURST > 0
+  const results =
+    VISITS > 0
       ? {
-          off: await runBursts('off', browser, sql),
-          on: await runBursts('on', browser, sql),
+          off: await runMode('off', browser, sql),
+          on: await runMode('on', browser, sql),
         }
       : undefined;
+  let bursts;
+  if (BURST > 0) {
+    bursts = {off: {one: [], many: []}, on: {one: [], many: []}} as NonNullable<
+      Parameters<typeof report>[0]['bursts']
+    >;
+    // Alternating modes, so that drift over the run affects both alike.
+    for (let i = 0; i < BURST_RUNS; i++) {
+      for (const mode of ['off', 'on'] as const) {
+        const {one, many} = await runBursts(mode, browser, sql);
+        bursts[mode].one.push(one);
+        bursts[mode].many.push(many);
+      }
+    }
+  }
   const verified = args.verify ? await runVerify() : undefined;
   const text = report({
     ssrZero: args['ssr-zero'],

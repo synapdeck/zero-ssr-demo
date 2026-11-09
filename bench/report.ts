@@ -28,8 +28,8 @@ export type Report = {
   visits: number;
   burst: number;
   users: number;
-  results: Modes<Record<PageName, PageResult>>;
-  bursts: Modes<{one: BurstResult; many: BurstResult}> | undefined;
+  results: Modes<Record<PageName, PageResult>> | undefined;
+  bursts: Modes<{one: BurstResult[]; many: BurstResult[]}> | undefined;
   verified:
     | {
         result: {
@@ -56,30 +56,27 @@ const KINDS: Record<PageName, string> = {
 
 const ms = (n: number) => (Number.isFinite(n) ? `${Math.round(n)} ms` : '-');
 
-function burstTable(title: string, b: Modes<BurstResult>) {
+function burstTable(title: string, b: Modes<BurstResult[]>) {
   return [
     ``,
     title,
     ``,
-    `| hydrationClone | Copied | Hydration | Browser live | Slowest browser |`,
-    `|---|---|---|---|---|`,
-    ...(['off', 'on'] as const).map(
-      mode =>
-        `| ${mode} | ${b[mode].copied}/${b[mode].browsers} | ${ms(b[mode].hydrationMs)} | ` +
-        `${ms(b[mode].liveMs)} | ${ms(b[mode].slowestLiveMs)} |`,
+    `| Run | hydrationClone | Copied | Hydration | Browser live | Slowest browser |`,
+    `|---|---|---|---|---|---|`,
+    ...b.off.flatMap((_, i) =>
+      (['off', 'on'] as const).map(mode => {
+        const x = b[mode][i];
+        return (
+          `| ${i + 1} | ${mode} | ${x.copied}/${x.browsers} | ${ms(x.hydrationMs)} | ` +
+          `${ms(x.liveMs)} | ${ms(x.slowestLiveMs)} |`
+        );
+      }),
     ),
   ];
 }
 
-/** The results as Markdown. */
-export function report(r: Report): string {
-  const {off, on} = r.results;
-  const lines = [
-    `# hydrationClone off vs on`,
-    ``,
-    `${r.issues} issues, ${r.issues * 2} comments, ${r.workers} sync workers, one node, ` +
-      `${r.visits} first visits per page, each in a new Chromium context. SSR instances: \`${r.ssrZero}\`.`,
-    ``,
+function visitTables({off, on}: Modes<Record<PageName, PageResult>>) {
+  return [
     `"Hydration" is what zero-cache logged for the browser's client group. "Browser live" is`,
     `the time from navigation start until the browser's own view of the query is complete.`,
     `"Rows read" leaves out the rows a copy looks up to send, so it shows why \`search\` gets`,
@@ -103,6 +100,18 @@ export function report(r: Report): string {
         `| ${p} | ${off[p].flashes} / ${on[p].flashes} | ${off[p].errors} / ${on[p].errors} | ` +
         `${off[p].liveUpdates} / ${on[p].liveUpdates} |`,
     ),
+  ];
+}
+
+/** The results as Markdown. */
+export function report(r: Report): string {
+  const lines = [
+    `# hydrationClone off vs on`,
+    ``,
+    `${r.issues} issues, ${r.issues * 2} comments, ${r.workers} sync workers, one node, ` +
+      `${r.visits} first visits per page, each in a new Chromium context. SSR instances: \`${r.ssrZero}\`.`,
+    ``,
+    ...(r.results ? visitTables(r.results) : []),
   ];
   if (r.bursts) {
     const {off: a, on: b} = r.bursts;

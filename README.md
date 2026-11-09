@@ -23,14 +23,15 @@ The app is in `src/`: the SSR and query servers, and the browser bundle.
 `bench/` starts Postgres with Testcontainers, zero-cache, the servers and
 Chromium, and stops them all when it finishes. It uses ports 17601 to 17849,
 prints the results and writes them to `.build/results.md`. zero-cache's log goes
-to `.build/zero-cache.log`. `results/` has runs from my machine.
+to `.build/zero-cache.log`, with a copy kept for each phase. `results/` has runs from my machine.
 
 | Option            | Default |                                                                     |
 | ----------------- | ------- | ------------------------------------------------------------------- |
 | `--issues`        | 500000  | Issues to seed, with twice as many comments                         |
-| `--visits`        | 5       | First visits per page, each in a new browser context                |
+| `--visits`        | 5       | First visits per page, each in a new browser context. 0 skips them. |
 | `--workers`       | 4       | Sync workers                                                        |
 | `--burst`         | 0       | Also open this many browsers at once on `search`, and 1 per 5 users |
+| `--burst-runs`    | 1       | Repeat the bursts, alternating off and on                           |
 | `--verify`        | off     | Also check CVR data                                                 |
 | `--verify-rounds` | 3       | Rounds of those checks                                              |
 | `--ssr-zero`      | pool    | `pool`, `per-request` or `fresh`: how the SSR server gets a `Zero`  |

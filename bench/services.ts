@@ -1,5 +1,5 @@
 import {execSync, spawn, type ChildProcess} from 'node:child_process';
-import {closeSync, openSync, readFileSync, rmSync} from 'node:fs';
+import {closeSync, copyFileSync, openSync, readFileSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {
   PostgreSqlContainer,
@@ -169,3 +169,7 @@ export function removeReplica() {
 }
 
 export const zeroLog = () => readFileSync(ZERO_LOG, 'utf8');
+
+/** Keeps the current zero-cache log, for looking into a result afterwards. */
+export const keepLog = (name: string) =>
+  copyFileSync(ZERO_LOG, join(BUILD, `zero-cache-${name}.log`));
